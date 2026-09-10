@@ -1,0 +1,54 @@
+{
+  "title": "Artagram - Panel tecnico",
+  "uid": "artagram-tecnico",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Sesiones WebSocket activas",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "targets": [{ "expr": "ws_sesiones_activas", "refId": "A" }]
+    },
+    {
+      "id": 2,
+      "title": "Trazos por segundo",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 9, "x": 6, "y": 0 },
+      "targets": [{ "expr": "rate(trazos_por_segundo_total{application=\"platform\"}[1m])", "refId": "A", "legendFormat": "trazos/s" }]
+    },
+    {
+      "id": 3,
+      "title": "Errores 5xx",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 9, "x": 15, "y": 0 },
+      "targets": [{ "expr": "increase(http_errores_5xx_total[5m])", "refId": "A" }]
+    },
+    {
+      "id": 4,
+      "title": "Latencia de trazos (p50 / p95 / p99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        { "expr": "trazo_latencia_ms_seconds{quantile=\"0.5\"} * 1000", "refId": "A", "legendFormat": "p50" },
+        { "expr": "trazo_latencia_ms_seconds{quantile=\"0.95\"} * 1000", "refId": "B", "legendFormat": "p95" },
+        { "expr": "trazo_latencia_ms_seconds{quantile=\"0.99\"} * 1000", "refId": "C", "legendFormat": "p99" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] }
+    },
+    {
+      "id": 5,
+      "title": "Bloqueos negados / disputas del borrador",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "targets": [
+        { "expr": "increase(bloqueos_negados_total[5m])", "refId": "A", "legendFormat": "bloqueos negados" },
+        { "expr": "increase(borrador_disputas_total[5m])", "refId": "B", "legendFormat": "disputas del borrador" }
+      ]
+    }
+  ]
+}
