@@ -57,7 +57,7 @@ con Postgres y Redis reales, más un cliente STOMP real para los canales de tiem
 ## Cómo correr todo
 
 ```bash
-cd backend
+# desde el repo ARTAGRAM-BackEnd
 mvn test      # unitarias (Surefire): AuthServiceTest, TraceIdFilterTest
 mvn verify    # unitarias + de integración (Failsafe, Testcontainers Postgres+Redis reales)
 ```

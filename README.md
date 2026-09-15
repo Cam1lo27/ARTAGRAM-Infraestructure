@@ -6,6 +6,15 @@ pintan con el mismo pincel). Implementa las 21 historias *Must have* del Release
 (MVP) del story map del curso — ver [`docs/gherkin-coverage.md`](docs/gherkin-coverage.md)
 para la trazabilidad completa HU → escenario → prueba automatizada.
 
+## Tecnologías
+
+| Capa | Stack |
+|---|---|
+| **Backend** | Java 21, Spring Boot 3.3.4 (Web, WebSocket/STOMP, Data JPA, Security, Validation, Actuator, Mail), PostgreSQL 16 + Flyway, Redis 7 + Redisson, JWT, springdoc-openapi (Swagger), Micrometer + Prometheus, Logback JSON. Detalle completo en el [README de `ARTAGRAM-BackEnd`](https://github.com/Cam1lo27/ARTAGRAM-BackEnd). |
+| **Frontend** | React 19 + TypeScript, Vite 8, React Router 7, Zustand, Axios, `@stomp/stompjs`, Tailwind CSS 3, Framer Motion. Detalle completo en el [README de `ARTAGRAM-FrontEnd`](https://github.com/Cam1lo27/ARTAGRAM-FrontEnd). |
+| **Infraestructura** | Docker + Docker Compose, GitHub Container Registry (ghcr.io) para las imágenes, GitHub Actions (CI/CD), Prometheus + Grafana (observabilidad) |
+| **Testing** | JUnit 5, Mockito, Testcontainers (Postgres + Redis reales), cliente STOMP real, JaCoCo, SpotBugs |
+
 ## Arquitectura
 
 **Backend: Java 21 + Spring Boot 3** (Web, WebSocket/STOMP, Data JPA, Security, Redis,
@@ -63,50 +72,48 @@ interpola visualmente entre ticks para que la cuenta regresiva se vea fluida.
 ### Estructura
 
 ```
-backend/    Spring Boot (Maven) — un paquete por módulo de dominio
+ARTAGRAM-BackEnd/          Spring Boot (Maven) — un paquete por módulo de dominio
   src/main/java/.../{auth,profile,community,canvas,party,chat,feed,billing,observability,realtime,common}
-  src/test/java/...     unitarias (JUnit5+Mockito) + integración (Testcontainers + STOMP real)
-frontend/   React + TS + Vite
+  src/test/java/...        unitarias (JUnit5+Mockito) + integración (Testcontainers + STOMP real)
+ARTAGRAM-FrontEnd/         React + TS + Vite
   src/features/{auth,profile,community,canvas,party,chat,feed,admin}
-  src/lib/    cliente STOMP, cliente HTTP, motor de canvas, store de sesión
-infra/      docker-compose.yml, Prometheus, Grafana (dashboards provisionados)
-docs/       gherkin-coverage.md — trazabilidad HU → prueba
+  src/lib/                 cliente STOMP, cliente HTTP, motor de canvas, store de sesión
+ARTAGRAM-Infraestructure/  docker-compose.yml, Prometheus, Grafana (dashboards provisionados), este README
 ```
+
+Los 3 repos se clonan como carpetas hermanas, al mismo nivel.
 
 ## Cómo levantar todo
 
-Este proyecto está pensado para vivir en **3 repositorios separados** — `artagram-backend`,
-`artagram-frontend`, `artagram-infra` — conectados por imágenes Docker publicadas en
-GitHub Container Registry, no por rutas de carpeta compartidas. Ver
-[el apartado de más abajo](#cómo-separar-esto-en-3-repositorios) para el paso a paso de
-la separación. Mientras tanto, las dos formas de levantar el stack:
+Este proyecto vive en **3 repositorios separados** (`ARTAGRAM-BackEnd`, `ARTAGRAM-FrontEnd`,
+`ARTAGRAM-Infraestructure`), conectados por imágenes Docker publicadas en GitHub Container
+Registry, no por rutas de carpeta compartidas — ver [el apartado de más abajo](#cómo-están-conectados-los-3-repositorios)
+para el detalle de esa conexión. Formas de levantar el stack:
 
 ### Opción A — Imágenes publicadas (como va a funcionar una vez separado en 3 repos)
 
 ```bash
-cd infra
 cp .env.example .env     # completá GHCR_OWNER con tu usuario de GitHub
 docker compose pull
 docker compose up -d
 ```
 
-### Opción B — Build local desde el código fuente (como está ahora mismo, monorepo)
+### Opción B — Build local desde el código fuente de los 3 repos clonados como hermanos
 
 ```bash
-cd infra
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
 ```
 
-`docker-compose.dev.yml` pisa el `image:` del archivo base por un `build: context: ../backend`
-/ `../frontend` — por eso necesita que las 3 carpetas sigan siendo hermanas (como en este
-monorepo, o si cloná los 3 repos separados uno al lado del otro).
+`docker-compose.dev.yml` pisa el `image:` del archivo base por un `build: context: ../ARTAGRAM-BackEnd`
+/ `../ARTAGRAM-FrontEnd` — por eso necesita que los 3 repos (`ARTAGRAM-BackEnd`, `ARTAGRAM-FrontEnd`,
+`ARTAGRAM-Infraestructure`) estén clonados como carpetas hermanas, todas al mismo nivel.
 
 Cualquiera de las dos formas levanta Postgres, Redis, el backend (puerto `8080`), el
 frontend servido por nginx (puerto `5173`), Prometheus (`9090`) y Grafana (`3001`, usuario
 `admin`/`admin`, con acceso anónimo de solo lectura habilitado). Abrí `http://localhost:5173`.
 
 Variables de entorno relevantes (todas con default de desarrollo, ver
-`infra/docker-compose.yml` y `backend/src/main/resources/application.yml`):
+`docker-compose.yml` en este repo y `application.yml` en ARTAGRAM-BackEnd):
 
 | Variable | Uso | Default dev |
 |---|---|---|
@@ -124,54 +131,63 @@ Variables de entorno relevantes (todas con default de desarrollo, ver
 > si no, las URLs firmadas de imágenes (`obraFinalUrl`, fotos de perfil) quedan apuntando
 > al puerto equivocado y las imágenes no cargan (el resto de la app funciona igual).
 
+### Poblar la base con datos de demostración
+
+El backend trae un `DemoDataSeeder` (Java puro, `@Profile("seed")`) que crea usuarios,
+comunidades, publicaciones con imágenes de ejemplo, likes, seguidores, chats y banners
+pintados — para que la app no arranque vacía. Es idempotente (si ya corrió, no duplica
+nada) y solo se activa con el profile `seed`:
+
+```bash
+# con Docker: exportá el profile antes de levantar el backend (o agregalo a tu .env)
+SPRING_PROFILES_ACTIVE=seed docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
+
+# corriendo el backend a mano (desde ARTAGRAM-BackEnd)
+mvn spring-boot:run -Dspring-boot.run.profiles=seed
+```
+
+Uno de los usuarios sembrados (`prueba.artagram@correo.com`) queda promovido a rol
+`ADMIN`, para poder entrar al panel de administración sin tocar la base a mano.
+
 ### Opción C — correr cada parte a mano, sin Docker (para desarrollo)
 
 ```bash
-# Postgres y Redis (podés usar solo esos dos servicios del compose)
-cd infra && docker compose up postgres redis
+# Postgres y Redis (podés usar solo esos dos servicios del compose), desde ARTAGRAM-Infraestructure
+docker compose up postgres redis
 
-# Backend
-cd backend
+# Backend, desde ARTAGRAM-BackEnd (otra terminal)
 mvn spring-boot:run
 
-# Frontend (en otra terminal)
-cd frontend
+# Frontend, desde ARTAGRAM-FrontEnd (otra terminal)
 npm install
 npm run dev   # usa .env (VITE_API_BASE_URL/VITE_WS_URL apuntan a :8080 por defecto);
               # si tu backend corre en otro puerto, creá un .env.local con esas dos
               # variables apuntando ahí — Vite lo prioriza sobre .env
 ```
 
-## Cómo separar esto en 3 repositorios
+## Cómo están conectados los 3 repositorios
 
-La "conexión" entre los 3 repos ya está armada: cada uno de `backend/` y `frontend/`
-trae su propio workflow de GitHub Actions (`.github/workflows/docker-publish.yml`) que
-compila, corre las pruebas (solo el backend) y publica la imagen en
-`ghcr.io/<tu-usuario>/artagram-backend` / `artagram-frontend` en cada push a `main` o
-`master`. `infra/docker-compose.yml` ya apunta a esas imágenes por nombre — no necesita
-ver el código fuente de los otros dos repos para nada. Lo único que falta es que vos:
+La separación en `ARTAGRAM-BackEnd`, `ARTAGRAM-FrontEnd` y `ARTAGRAM-Infraestructure`
+ya está hecha. La "conexión" entre ellos no es por ruta de carpeta compartida sino por
+imágenes Docker: cada uno de los repos de backend y frontend trae su propio workflow de
+GitHub Actions (`.github/workflows/docker-publish.yml`) que compila, corre las pruebas
+(solo el backend) y publica la imagen en `ghcr.io/<tu-usuario>/artagram-backend` /
+`artagram-frontend` en cada push a `main` o `master`. `docker-compose.yml` en este repo
+ya apunta a esas imágenes por nombre — no necesita ver el código fuente de los otros dos
+repos para nada.
 
-1. **Creá 3 repos vacíos en GitHub** (podés usar estos nombres u otros, no están
-   *hardcodeados* en ningún lado salvo en el nombre de la imagen que vos elijas):
-   `artagram-backend`, `artagram-frontend`, `artagram-infra`.
-2. **Copiá el contenido de cada carpeta** (no la carpeta en sí, su *contenido*) a la raíz
-   de su repo correspondiente:
-   - `backend/*` (incluido `.github/`) → raíz de `artagram-backend`
-   - `frontend/*` (incluido `.github/`) → raíz de `artagram-frontend`
-   - `infra/*` → raíz de `artagram-infra`
-   - `docs/` y este `README.md` — quedan mejor en el repo de infra, como referencia
-     general del proyecto (o donde prefieras).
-3. **Pusheá cada uno a su repo** (rama `main` o `master`, el workflow dispara con
-   cualquiera de las dos). Esto NO necesita ningún secret nuevo: `GITHUB_TOKEN` para
-   publicar en `ghcr.io` ya lo inyecta GitHub Actions solo.
-4. **Hacé público el paquete publicado** (la primera vez que corre el workflow, GHCR lo
+Para que la Opción A (imágenes publicadas) funcione en una máquina nueva:
+
+1. En cada uno de `ARTAGRAM-BackEnd` y `ARTAGRAM-FrontEnd`, el primer push a `main`/`master`
+   dispara el workflow y publica la imagen en GHCR.
+2. **Hacé público el paquete publicado** (la primera vez que corre el workflow, GHCR lo
    crea como privado): en GitHub → tu perfil → *Packages* → `artagram-backend` →
    *Package settings* → *Change visibility* → *Public*. Repetí para `artagram-frontend`.
    Si preferís dejarlos privados, `docker login ghcr.io` con un Personal Access Token
    (scope `read:packages`) antes del `docker compose pull`.
-5. **En `artagram-infra`**, copiá `.env.example` a `.env` y poné tu usuario de GitHub en
-   `GHCR_OWNER`. A partir de ahí, `docker compose pull && docker compose up -d` en
-   *cualquier máquina* levanta el stack completo sin tocar código fuente de los otros
+3. **En este repo (`ARTAGRAM-Infraestructure`)**, copiá `.env.example` a `.env` y poné tu
+   usuario de GitHub en `GHCR_OWNER`. A partir de ahí, `docker compose pull && docker compose up -d`
+   en *cualquier máquina* levanta el stack completo sin tocar código fuente de los otros
    dos repos — esa es toda la conexión.
 
 Si más adelante cambiás algo del backend o del frontend, el flujo normal es: commit →
@@ -181,18 +197,20 @@ push a tu repo → el workflow republica `:latest` solo → en la máquina donde
 ## Cómo correr las pruebas
 
 ```bash
-cd backend
+# desde ARTAGRAM-BackEnd
 mvn test      # unitarias (JUnit5 + Mockito), no necesitan Docker
 mvn verify    # + integración: Testcontainers levanta Postgres y Redis reales,
               # y las pruebas de tiempo real usan un cliente STOMP real (no mocks)
 ```
 
-Reporte de cobertura JaCoCo: `backend/target/site/jacoco/index.html` tras `mvn verify`.
-Análisis estático: `mvn spotbugs:check` (0 hallazgos de severidad alta — ver el detalle
-en [`docs/gherkin-coverage.md`](docs/gherkin-coverage.md#cobertura-y-análisis-estático)).
+Reporte de cobertura JaCoCo: `target/site/jacoco/index.html` (dentro de ARTAGRAM-BackEnd) tras `mvn verify`.
+Análisis estático: `mvn spotbugs:check` (ver el detalle en
+[`docs/gherkin-coverage.md`](docs/gherkin-coverage.md#cobertura-y-análisis-estático) de ese repo).
+Documentación interactiva de la API (Swagger UI), con el backend corriendo:
+`http://localhost:8080/swagger-ui.html`.
 
 ```bash
-cd frontend
+# desde ARTAGRAM-FrontEnd
 npm run build   # tsc -b && vite build — falla si hay errores de tipos
 ```
 
@@ -249,14 +267,18 @@ Con el stack levantado (Docker Compose o a mano):
    imágenes de proceso opcionales) desde "Feed" → "Publicar", y dale like desde la otra
    cuenta — el contador se actualiza al instante.
 7. **Panel de administración (HU-38)**: no hay forma de auto-promoverse a admin desde la
-   UI (a propósito). Para probarlo, promové un usuario a mano en la base:
+   UI (a propósito). Si levantaste el backend con el profile `seed` (ver [Poblar la base
+   con datos de demostración](#poblar-la-base-con-datos-de-demostración)), la cuenta
+   `prueba.artagram@correo.com` / `clavesegura123` ya es `ADMIN` — iniciá sesión con esa
+   y entrá a `/admin`. Sin seed, promové un usuario a mano en la base:
    ```sql
    UPDATE usuarios SET rol_global = 'ADMIN' WHERE correo = 'tu-correo@ejemplo.com';
    ```
    Volvé a iniciar sesión con esa cuenta y entrá a `/admin` — vas a ver los 4 KPIs de
-   negocio con su fórmula y tendencia, y los enlaces a los paneles de Grafana. Si entrás
-   con una cuenta sin rol ADMIN, el intento queda registrado en los logs del backend con
-   nivel `WARN` (`Acceso denegado: usuario=... intento entrar a GET /api/admin/...`).
+   negocio con su fórmula y tendencia, y los enlaces a los paneles de Grafana. Con una
+   cuenta sin rol ADMIN, ni siquiera aparece el link "Admin" del menú, y si se entra
+   igual por URL directa el backend rechaza la petición con 403 (`SIN_PERMISO`) y el
+   intento queda registrado en los logs con nivel `WARN`.
 8. **Métricas técnicas**: `http://localhost:8080/actuator/prometheus` expone, entre
    otras, `trazo_latencia_ms_seconds`, `trazos_por_segundo_total`,
    `bloqueos_negados_total`, `borrador_disputas_total`, `ws_sesiones_activas` y

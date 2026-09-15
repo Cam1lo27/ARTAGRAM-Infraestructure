@@ -46,6 +46,7 @@ services:
       APP_API_BASE_URL: ${APP_API_BASE_URL:-http://localhost:8080}
       STORAGE_ROOT: /app/data/uploads
       EMAIL_MODE: log
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-}
     volumes:
       - backend_uploads:/app/data/uploads
     depends_on:

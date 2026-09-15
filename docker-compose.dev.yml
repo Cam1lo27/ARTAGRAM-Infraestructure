@@ -1,7 +1,7 @@
 # Override para desarrollo local a partir del código fuente, en vez de bajar
 # las imágenes publicadas en ghcr.io. Pensado para cuando tenés los 3 repos
-# clonados como carpetas hermanas (backend/, frontend/, infra/ al mismo nivel)
-# — que es exactamente la estructura de este monorepo hoy.
+# clonados como carpetas hermanas (ARTAGRAM-BackEnd/, ARTAGRAM-FrontEnd/,
+# ARTAGRAM-Infraestructure/ al mismo nivel).
 #
 # Uso:
 #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
@@ -12,12 +12,12 @@
 services:
   backend:
     build:
-      context: ../backend
+      context: ../ARTAGRAM-BackEnd
     image: artagram-backend:dev
 
   frontend:
     build:
-      context: ../frontend
+      context: ../ARTAGRAM-FrontEnd
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080}
         VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:8080/ws}
