@@ -1,0 +1,92 @@
+{
+  "title": "Artagram - Panel de negocio",
+  "uid": "artagram-negocio",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Tasa de colaboración",
+      "description": "Usuarios activos que entraron a un lienzo o sala de fiesta / usuarios activos, en la semana. Meta: 40%.",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "targets": [{ "expr": "kpi_tasa_colaboracion", "refId": "A" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": null },
+            { "color": "green", "value": 0.40 }
+          ] }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Duración de la sesión colaborativa",
+      "description": "Tiempo total de sesiones de lienzo / número de sesiones, en minutos, en la semana. Meta: 12 min.",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+      "targets": [{ "expr": "kpi_duracion_sesion_minutos", "refId": "A" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "m",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": null },
+            { "color": "green", "value": 12 }
+          ] }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Retención a 7 días",
+      "description": "Artistas que volvieron a entrar entre el día 1 y el día 7 / artistas registrados en el período. Meta: 25%.",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+      "targets": [{ "expr": "kpi_retencion_7_dias", "refId": "A" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": null },
+            { "color": "green", "value": 0.25 }
+          ] }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Conversión a premium",
+      "description": "Usuarios activos del mes con premium activo / usuarios activos del mes. Meta: 5%.",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
+      "targets": [{ "expr": "kpi_conversion_premium", "refId": "A" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": null },
+            { "color": "green", "value": 0.05 }
+          ] }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Los 4 KPIs en el tiempo",
+      "description": "Formula y período de cada uno en /api/admin/kpis (o el panel de administración de la app) — acá solo el valor recalculado en cada scrape de Prometheus.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 6 },
+      "targets": [
+        { "expr": "kpi_tasa_colaboracion", "refId": "A", "legendFormat": "Tasa de colaboración" },
+        { "expr": "kpi_retencion_7_dias", "refId": "B", "legendFormat": "Retención 7 días" },
+        { "expr": "kpi_conversion_premium", "refId": "C", "legendFormat": "Conversión a premium" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] }
+    }
+  ]
+}

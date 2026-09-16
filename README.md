@@ -10,7 +10,7 @@ para la trazabilidad completa HU → escenario → prueba automatizada.
 
 | Capa | Stack |
 |---|---|
-| **Backend** | Java 21, Spring Boot 3.3.4 (Web, WebSocket/STOMP, Data JPA, Security, Validation, Actuator, Mail), PostgreSQL 16 + Flyway, Redis 7 + Redisson, JWT, springdoc-openapi (Swagger), Micrometer + Prometheus, Logback JSON. Detalle completo en el [README de `ARTAGRAM-BackEnd`](https://github.com/Cam1lo27/ARTAGRAM-BackEnd). |
+| **Backend** | Java 21, Spring Boot 3.3.4 (Web, WebSocket/STOMP, Data JPA, Security, Validation, Actuator, Mail), PostgreSQL 16 + Flyway, Redis 7 + Redisson (locks, rate-limiter y Pub/Sub para tiempo real multi-instancia), JWT, springdoc-openapi (Swagger), Azure Blob Storage SDK (almacenamiento intercambiable), Micrometer + Prometheus, Logback JSON. Detalle completo en el [README de `ARTAGRAM-BackEnd`](https://github.com/Cam1lo27/ARTAGRAM-BackEnd). |
 | **Frontend** | React 19 + TypeScript, Vite 8, React Router 7, Zustand, Axios, `@stomp/stompjs`, Tailwind CSS 3, Framer Motion. Detalle completo en el [README de `ARTAGRAM-FrontEnd`](https://github.com/Cam1lo27/ARTAGRAM-FrontEnd). |
 | **Infraestructura** | Docker + Docker Compose, GitHub Container Registry (ghcr.io) para las imágenes, GitHub Actions (CI/CD), Prometheus + Grafana (observabilidad) |
 | **Testing** | JUnit 5, Mockito, Testcontainers (Postgres + Redis reales), cliente STOMP real, JaCoCo, SpotBugs |
@@ -44,17 +44,24 @@ o sala (no solo al conectar) — encaja directo con HU-11 y HU-22.
   *antes* de aceptar la conexión — el `Principal` resultante persiste durante toda la
   sesión STOMP (a diferencia de intentar setearlo en un `ChannelInterceptor` sobre el
   frame `CONNECT`, que no persiste a los frames siguientes).
-- **Broker STOMP**: `SimpleBroker` en memoria (una sola instancia). Todo el estado que
-  importa para consistencia (locks, contadores, salas, cuotas) vive en Postgres/Redis,
-  nunca en un `Map` de la JVM — así escalar a N instancias del backend solo implica
-  cambiar `configureMessageBroker` para usar un *broker relay* externo (RabbitMQ o
-  ActiveMQ), sin tocar la lógica de dominio.
+- **Broker STOMP multi-instancia**: `SimpleBroker` en memoria por instancia, pero ningún
+  componente de dominio lo usa directo — todos pasan por `RealtimeBroadcaster`, que
+  publica cada mensaje en un `RTopic` de Redis y cada instancia (incluida la que lo
+  originó) lo recibe y hace la entrega local real. Se eligió Redis Pub/Sub en vez de un
+  *broker relay* dedicado (RabbitMQ/ActiveMQ, la forma "de libro" vía
+  `enableStompBrokerRelay`) porque reusa el Redis que el proyecto ya tiene para locks y
+  rate-limiting, sin infraestructura ni costo nuevo — correr el backend con más de una
+  instancia detrás de un load balancer ya no rompe el tiempo real.
+- **Almacenamiento intercambiable**: `StorageService` (validación + firma HMAC) delega en
+  un `StorageProvider` — disco local por defecto, o Azure Blob Storage activándolo con
+  `STORAGE_PROVIDER=blob` (sin tocar código), para que los archivos subidos sobrevivan un
+  redeploy/reinicio en producción.
 - **Observabilidad**: Micrometer + `/actuator/prometheus`; logs JSON (Logback +
   `logstash-logback-encoder`) con `traceId` propagado en HTTP y STOMP vía MDC; una tabla
   de eventos de negocio (`EventoNegocio`) alimenta los 4 KPIs (HU-37) calculados bajo
   demanda con fórmula, periodo y tendencia.
 
-**Frontend: React 18 + TypeScript + Vite.** Canvas 2D nativo (no WebGL) para los tres
+**Frontend: React 19 + TypeScript + Vite.** Canvas 2D nativo (no WebGL) para los tres
 lienzos (estudio colaborativo, banner mural, modo fiesta) — con `globalCompositeOperation`
 y `filter: blur()` alcanza para simular textura de pincel (lápiz/marcador/acuarela) sin
 la complejidad de WebGL, y es más que suficiente en rendimiento para el trazo por puntos
@@ -265,7 +272,10 @@ Con el stack levantado (Docker Compose o a mano):
    (dentro del detalle de la comunidad) es visible para todos los miembros conectados.
 6. **Feed y likes (HU-05/06/07)**: publicá una obra (imagen final obligatoria, hasta 10
    imágenes de proceso opcionales) desde "Feed" → "Publicar", y dale like desde la otra
-   cuenta — el contador se actualiza al instante.
+   cuenta — el contador se actualiza al instante. El ícono de basurero solo aparece en tus
+   propias publicaciones — con la otra cuenta, intentá borrar la publicación de la primera
+   directo por API (`DELETE /api/publicaciones/{id}`) y confirmá que el backend responde
+   403 `SOLO_AUTOR` aunque el botón no esté visible en esa cuenta.
 7. **Panel de administración (HU-38)**: no hay forma de auto-promoverse a admin desde la
    UI (a propósito). Si levantaste el backend con el profile `seed` (ver [Poblar la base
    con datos de demostración](#poblar-la-base-con-datos-de-demostración)), la cuenta
@@ -283,7 +293,41 @@ Con el stack levantado (Docker Compose o a mano):
    otras, `trazo_latencia_ms_seconds`, `trazos_por_segundo_total`,
    `bloqueos_negados_total`, `borrador_disputas_total`, `ws_sesiones_activas` y
    `http_errores_5xx_total`. El dashboard técnico de Grafana (`localhost:3001`) ya viene
-   provisionado con paneles para todas ellas.
+   provisionado con paneles para todas ellas. El **panel de negocio** (los 4 KPIs de
+   HU-37, `localhost:3001/d/artagram-negocio`) usa las mismas métricas pero expuestas
+   como gauges (`kpi_tasa_colaboracion`, `kpi_duracion_sesion_minutos`,
+   `kpi_retencion_7_dias`, `kpi_conversion_premium`) — mismo datasource de Prometheus,
+   sin necesitar un datasource de Postgres aparte en Grafana.
+
+## Despliegue en producción
+
+Todo lo de arriba (Docker Compose, Prometheus, Grafana) es para **desarrollo y demo
+local**. Para desplegar de verdad, cada pieza va a un servicio distinto — no hay un
+único "deploy de infra" porque ya no comparten host:
+
+- **Backend → Azure App Service** (contenedor Linux, tirando de la imagen que ya publica
+  el CI en `ghcr.io`), con Azure Database for PostgreSQL y Azure Cache for Redis como
+  dependencias administradas, y Azure Blob Storage para los archivos subidos
+  (`STORAGE_PROVIDER=blob` — sin esto, el disco del contenedor no persiste entre
+  reinicios). Paso a paso completo y variables de entorno en el
+  [README de `ARTAGRAM-BackEnd`](https://github.com/Cam1lo27/ARTAGRAM-BackEnd#despliegue-en-azure)
+  — ahí también está por qué hay que prender "Web sockets" a mano en Azure (viene
+  apagado por defecto y sin eso no funciona nada de tiempo real).
+- **Frontend → Vercel**, construyendo directo desde el código fuente (no necesita la
+  imagen Docker de este repo). Paso a paso, `vercel.json` y variables de entorno en el
+  [README de `ARTAGRAM-FrontEnd`](https://github.com/Cam1lo27/ARTAGRAM-FrontEnd#despliegue-en-vercel).
+- **Observabilidad**: Prometheus/Grafana tal como están acá son para correr al lado del
+  backend (scrapean `backend:8080` por nombre de servicio de Docker Compose). Llevarlos a
+  producción junto al App Service de Azure — o migrar a Azure Monitor/Grafana Cloud —
+  quedó fuera de alcance de esta entrega; el backend ya expone
+  `/actuator/prometheus` listo para que cualquiera de las dos opciones lo consuma el día
+  que se decida.
+
+Lo importante para no perderse: **backend y frontend se despliegan y versionan de forma
+completamente independiente** (cada uno con su propio CI/CD, ver
+["Cómo están conectados los 3 repositorios"](#cómo-están-conectados-los-3-repositorios)) —
+desplegar uno no requiere redesplegar el otro, solo que `CORS_ORIGINS` (backend) y
+`VITE_API_BASE_URL`/`VITE_WS_URL` (frontend) apunten correctamente el uno al otro.
 
 ## Qué queda fuera del alcance (a propósito)
 

@@ -1,0 +1,14 @@
+# Variables de entorno con secretos reales — copiar .env.example a .env
+.env
+
+# Volumenes de datos si alguna vez se montan como carpeta local en vez de
+# volumen con nombre de Docker
+postgres-data/
+grafana-data/
+
+# Sistema operativo / editores
+.DS_Store
+Thumbs.db
+.vscode/
+!.vscode/extensions.json
+.idea/

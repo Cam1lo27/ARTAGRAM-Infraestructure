@@ -67,11 +67,22 @@ estáticamente entre todas las clases `*IT.java` para que la suite completa corr
 y usa clientes STOMP reales (`StompTestClients`) para las pruebas de tiempo real — no hay
 mocks de WebSocket ni de Redis en ninguna prueba de integración.
 
+Además de las pruebas de la tabla de arriba (una por escenario de negocio), la suite
+también cubre comportamiento de framework que no corresponde a ninguna HU puntual pero sí
+es parte del contrato de la API: `GlobalExceptionHandlerIT` (ruta inexistente → 404,
+verbo no soportado → 405, JSON mal formado → 400, sin token → 401 en vez de 403),
+`DemoDataSeederIT` (el seeder de datos de demostración arranca solo con el profile `seed`
+y no duplica nada si corre dos veces) y `DiskStorageProviderTest` (guardar → existe →
+leer, byte a byte, sobre la abstracción de almacenamiento). Las 6 IT de tiempo real de la
+tabla de arriba, sin cambiar ni una línea, también verifican que `RealtimeBroadcaster`
+reparte los mensajes correctamente vía Redis Pub/Sub. `PublicacionIT` también cubre
+eliminar una publicación (solo el autor puede, y borra también el archivo del storage,
+no solo la fila). En total: **59 pruebas** (10 unitarias + 49 de integración), 0 fallos.
+
 ## Cobertura y análisis estático
 
-- **JaCoCo**: `target/site/jacoco/index.html` tras `mvn verify` — cobertura de línea sobre
-  los paquetes de dominio (auth, profile, community, canvas, party, chat, feed, billing,
-  observability) está por encima del 70% acordado en el DoD para esta etapa.
+- **JaCoCo**: `target/site/jacoco/index.html` tras `mvn verify` — **81% de cobertura de
+  línea** sobre todo el proyecto, por encima del 70% acordado en el DoD para esta etapa.
 - **SpotBugs**: `mvn spotbugs:check` (o `mvn verify`, corre en la fase `verify`). Con
   `effort=Max` y `threshold=Medium`, la suite reporta 4 hallazgos, todos de severidad
   **Medium** (ninguno High): 1 `CT_CONSTRUCTOR_THROW` (genérico, de bajo riesgo real —
